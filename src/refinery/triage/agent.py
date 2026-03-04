@@ -101,7 +101,6 @@ def save_profile(profile: DocumentProfile, doc_id: str) -> Path:
 
 def load_profile(doc_id: str, profiles_dir: Optional[Path] = None) -> DocumentProfile:
     """Load a saved profile from .refinery/profiles/{doc_id}.json."""
-    from refinery.models import DocumentProfile as DP
     dir_path = profiles_dir or REFINERY_PROFILES_DIR
     path = dir_path / f"{doc_id}.json"
     if not path.exists():
@@ -109,16 +108,15 @@ def load_profile(doc_id: str, profiles_dir: Optional[Path] = None) -> DocumentPr
     data = json.loads(path.read_text(encoding="utf-8"))
     if "source_path" in data and data["source_path"]:
         data["source_path"] = Path(data["source_path"])
-    return DP.model_validate(data)
+    return DocumentProfile.model_validate(data)
 
 
 def load_profile_from_path(profile_path: Path) -> DocumentProfile:
     """Load a profile from an arbitrary path."""
-    from refinery.models import DocumentProfile as DP
     data = json.loads(profile_path.read_text(encoding="utf-8"))
     if "source_path" in data and data["source_path"]:
         data["source_path"] = Path(data["source_path"])
-    return DP.model_validate(data)
+    return DocumentProfile.model_validate(data)
 
 
 def run_triage(

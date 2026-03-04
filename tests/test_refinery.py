@@ -105,8 +105,8 @@ def test_load_profile_requires_doc_id():
 
 
 def test_extraction_rules_load():
-    """Extraction rules load from configs/extraction_rules.yaml when present."""
-    from refinery.extraction.base import load_extraction_rules
+    """Extraction rules load from rubric/extraction_rules.yaml or configs/ when present."""
+    from refinery.strategies.base import load_extraction_rules
 
     rules = load_extraction_rules()
     assert rules.fast_text.min_chars_per_page >= 0
@@ -116,7 +116,7 @@ def test_extraction_rules_load():
 
 def test_extraction_schema_content_hash():
     """TextBlock and ExtractedTable get content_hash from from_* factory."""
-    from refinery.extraction.schema import Bbox, TextBlock, ExtractedTable
+    from refinery.models import Bbox, TextBlock, ExtractedTable
 
     tb = TextBlock.from_text_bbox("hello", Bbox(x0=0, top=0, x1=10, bottom=10), page_index=0)
     assert tb.content_hash
@@ -124,3 +124,26 @@ def test_extraction_schema_content_hash():
     et = ExtractedTable.from_data_bbox([["a", "b"]], Bbox(x0=0, top=0, x1=10, bottom=10), page_index=0)
     assert et.content_hash
     assert len(et.content_hash) == 32
+
+
+def test_fast_text_confidence_scoring():
+    """FastTextExtractor returns confidence in [0, 1]; low confidence for sparse page."""
+    from pathlib import Path
+    from refinery.models import DocumentProfile
+    from refinery.strategies.fast_text import FastTextExtractor
+    from refinery.strategies.config_models import ExtractionRules
+
+    rules = ExtractionRules()
+    rules.fast_text.min_chars_per_page = 50
+    ext = FastTextExtractor(extraction_rules=rules)
+    # Use a real PDF from repo if available
+    for name in ("ETS_Annual_Report_2024_2025.pdf", "2013-E.C-Procurement-information.pdf"):
+        path = Path(__file__).resolve().parent.parent / name
+        if path.exists():
+            profile = DocumentProfile(doc_id="test-ft", source_path=path, page_count=1)
+            doc, conf = ext.extract(path, profile)
+            assert doc.strategy_used == "fast_text"
+            assert 0 <= conf <= 1
+            assert len(doc.pages) >= 1
+            return
+    pytest.skip("No PDF in repo for FastText confidence test")

@@ -161,17 +161,19 @@ def _doc_from_vision_pages(pages_data: List[dict], doc_id: str, source_path: Opt
 
 def _estimate_cost_usd(usage: dict, model_id: str) -> float:
     """Estimate USD from usage (prompt_tokens, completion_tokens). Uses defaults if missing."""
-    prompt = int(usage.get("prompt_tokens", 0))
-    completion = int(usage.get("completion_tokens", 0))
-    # OpenRouter returns usage in response; if it includes native_total_cost use that
+    prompt = int(
+        usage.get("prompt_tokens") or usage.get("promptTokenCount") or 0
+    )
+    completion = int(
+        usage.get("completion_tokens") or usage.get("completionTokenCount") or 0
+    )
     if "native_total_cost" in usage and usage["native_total_cost"] is not None:
         return float(usage["native_total_cost"])
-    # Fallback estimate
     return (prompt / 1000.0 * DEFAULT_INPUT_USD_PER_1K) + (completion / 1000.0 * DEFAULT_OUTPUT_USD_PER_1K)
 
 
 class VisionExtractor:
-    """Extract using a vision model via OpenRouter. Budget cap per document; dynamic model selection."""
+    """Extract using a vision model. Tries OpenRouter first, then Groq, Google Gemini, SambaNova on failure. Budget cap per document."""
 
     def __init__(
         self,
@@ -189,8 +191,15 @@ class VisionExtractor:
         return self.rules.vision.model_cheap
 
     def extract(self, pdf_path: Path, profile: DocumentProfile) -> tuple[ExtractedDocument, float]:
-        if not self.api_key:
-            raise RuntimeError("OPENROUTER_API_KEY is required for VisionExtractor")
+        openrouter_key = self.api_key or _get_openrouter_api_key()
+        groq_key = _get_groq_api_key()
+        google_key = _get_google_api_key()
+        sambanova_key = _get_sambanova_api_key()
+        if not any([openrouter_key, groq_key, google_key, sambanova_key]):
+            raise RuntimeError(
+                "At least one of OPENROUTER_API_KEY/OPENROUTER_KEY, GROQ_API_KEY, "
+                "GOOGLE_API_KEY/GEMINI_API_KEY, or SAMBANOVA_KEY is required for VisionExtractor"
+            )
         images = _render_pdf_to_images(pdf_path)
         doc_id = profile.doc_id or ""
         budget_usd = self.rules.vision.budget_per_document_usd
@@ -213,7 +222,6 @@ Use points (72 DPI) for bbox. Return only valid JSON, no markdown."""
                 doc.status = "truncated_budget"
                 doc.page_count = len(images)
                 return doc, 1.0
-            # Conservative estimate for next page (avoid sending then failing)
             if spent_usd > 0 and spent_usd + 0.05 >= budget_usd:
                 logger.info("Estimated next page would exceed budget, stopping at page %d", i)
                 doc = _doc_from_vision_pages(pages_data, doc_id, pdf_path, strategy_used)
@@ -226,34 +234,18 @@ Use points (72 DPI) for bbox. Return only valid JSON, no markdown."""
             messages = [
                 {"role": "user", "content": [{"type": "text", "text": extraction_prompt}, {"type": "image_url", "image_url": {"url": url}}]},
             ]
-            payload = {
-                "model": model_id,
-                "messages": messages,
-                "max_tokens": 4096,
-            }
-            try:
-                import httpx
-                with httpx.Client(timeout=120.0) as client:
-                    r = client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                        json=payload,
-                    )
-                r.raise_for_status()
-                data = r.json()
-            except Exception as e:
-                logger.warning("Vision API request failed for page %d: %s", i, e)
+            result = _request_vision_page(
+                messages, extraction_prompt, b64, model_id,
+                openrouter_key, groq_key, google_key, sambanova_key,
+            )
+            if result is None:
+                logger.warning("All vision providers failed for page %d", i)
                 pages_data.append({"text_blocks": [], "tables": [], "figures": []})
                 continue
-            choice = (data.get("choices") or [None])[0]
-            if not choice:
-                pages_data.append({"text_blocks": [], "tables": [], "figures": []})
-                continue
-            usage = data.get("usage", {})
+            raw, usage, provider = result
             cost = _estimate_cost_usd(usage, model_id)
             spent_usd += cost
-            logger.info("Vision page %d: cost ~%.4f USD, total ~%.4f USD", i, cost, spent_usd)
-            raw = (choice.get("message") or {}).get("content") or ""
+            logger.info("Vision page %d (%s): cost ~%.4f USD, total ~%.4f USD", i, provider, cost, spent_usd)
             parsed = self.retry_handler.parse_with_retry(raw)
             if parsed:
                 pages_data.append(parsed)
@@ -267,4 +259,168 @@ Use points (72 DPI) for bbox. Return only valid JSON, no markdown."""
 
 def _get_openrouter_api_key() -> Optional[str]:
     import os
-    return os.environ.get("OPENROUTER_API_KEY")
+    return os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_KEY")
+
+
+def _get_groq_api_key() -> Optional[str]:
+    import os
+    return os.environ.get("GROQ_API_KEY")
+
+
+def _get_google_api_key() -> Optional[str]:
+    import os
+    return os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+
+
+def _get_sambanova_api_key() -> Optional[str]:
+    import os
+    return os.environ.get("SAMBANOVA_KEY") or os.environ.get("SAMBANOVA_API_KEY")
+
+
+def _vision_request_openrouter(
+    api_key: str, model: str, messages: List[dict], timeout: float = 120.0
+) -> tuple[str, dict] | None:
+    """Send vision request to OpenRouter. Returns (content, usage) or None on failure."""
+    try:
+        import httpx
+        payload = {"model": model, "messages": messages, "max_tokens": 4096}
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        r.raise_for_status()
+        data = r.json()
+        choice = (data.get("choices") or [None])[0]
+        if not choice:
+            return None
+        content = (choice.get("message") or {}).get("content") or ""
+        usage = data.get("usage", {})
+        return content, usage
+    except Exception as e:
+        logger.debug("OpenRouter vision request failed: %s", e)
+        return None
+
+
+def _vision_request_groq(
+    api_key: str, model: str, messages: List[dict], timeout: float = 120.0
+) -> tuple[str, dict] | None:
+    """Send vision request to Groq (OpenAI-compatible). Returns (content, usage) or None."""
+    try:
+        import httpx
+        payload = {"model": model, "messages": messages, "max_tokens": 4096}
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        r.raise_for_status()
+        data = r.json()
+        choice = (data.get("choices") or [None])[0]
+        if not choice:
+            return None
+        content = (choice.get("message") or {}).get("content") or ""
+        usage = data.get("usage", {})
+        return content, usage
+    except Exception as e:
+        logger.debug("Groq vision request failed: %s", e)
+        return None
+
+
+def _vision_request_google(
+    api_key: str, model: str, prompt_text: str, image_b64: str, timeout: float = 120.0
+) -> tuple[str, dict] | None:
+    """Send vision request to Google Gemini REST. Returns (content, usage) or None."""
+    try:
+        import httpx
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        body = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": prompt_text},
+                    {"inline_data": {"mime_type": "image/png", "data": image_b64}},
+                ],
+            }],
+            "generationConfig": {"maxOutputTokens": 4096},
+        }
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(url, json=body)
+        r.raise_for_status()
+        data = r.json()
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        content = "".join(p.get("text", "") for p in parts if isinstance(p.get("text"), str))
+        usage = data.get("usageMetadata") or {}
+        return content, usage
+    except Exception as e:
+        logger.debug("Google Gemini vision request failed: %s", e)
+        return None
+
+
+def _vision_request_sambanova(
+    api_key: str, model: str, messages: List[dict], timeout: float = 120.0
+) -> tuple[str, dict] | None:
+    """Send vision request to SambaNova (OpenAI-compatible). Returns (content, usage) or None."""
+    try:
+        import httpx
+        payload = {"model": model, "messages": messages, "max_tokens": 4096}
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(
+                "https://api.sambanova.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        r.raise_for_status()
+        data = r.json()
+        choice = (data.get("choices") or [None])[0]
+        if not choice:
+            return None
+        content = (choice.get("message") or {}).get("content") or ""
+        usage = data.get("usage", {})
+        return content, usage
+    except Exception as e:
+        logger.debug("SambaNova vision request failed: %s", e)
+        return None
+
+
+GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GOOGLE_VISION_MODEL = "gemini-2.0-flash"
+SAMBANOVA_VISION_MODEL = "Meta-Llama-3.1-8B-Instruct"
+
+
+def _request_vision_page(
+    messages: List[dict],
+    prompt_text: str,
+    image_b64: str,
+    model_id: str,
+    openrouter_key: Optional[str],
+    groq_key: Optional[str],
+    google_key: Optional[str],
+    sambanova_key: Optional[str],
+) -> tuple[str, dict, str] | None:
+    """Try providers in order: OpenRouter -> Groq -> Google Gemini -> SambaNova. Returns (content, usage, provider_name) or None."""
+    if openrouter_key:
+        out = _vision_request_openrouter(openrouter_key, model_id, messages)
+        if out:
+            return out[0], out[1], "openrouter"
+    if groq_key:
+        out = _vision_request_groq(groq_key, GROQ_VISION_MODEL, messages)
+        if out:
+            return out[0], out[1], "groq"
+    if google_key:
+        out = _vision_request_google(google_key, GOOGLE_VISION_MODEL, prompt_text, image_b64)
+        if out:
+            return out[0], out[1], "google"
+    if sambanova_key:
+        out = _vision_request_sambanova(sambanova_key, SAMBANOVA_VISION_MODEL, messages)
+        if out:
+            return out[0], out[1], "sambanova"
+    return None

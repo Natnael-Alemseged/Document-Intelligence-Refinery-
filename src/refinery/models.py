@@ -1,8 +1,8 @@
 """Pydantic models for DocumentProfile. Full implementation per plan."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 from pydantic import computed_field
 from pydantic import BaseModel, Field
@@ -30,7 +30,9 @@ class DocumentProfile(BaseModel):
     doc_id: Optional[str] = None
     source_path: Optional[Path] = None
     page_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Optional flags from heuristics: "empty_page", "likely_handwritten", etc.
+    classification_notes: List[str] = Field(default_factory=list)
 
     @computed_field
     @property

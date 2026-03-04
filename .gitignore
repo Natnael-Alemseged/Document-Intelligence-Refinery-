@@ -23,4 +23,4 @@ __pycache__/
 .vscode/
 
 # Refinery runtime (optional: keep profiles out of git)
-# .refinery/
+.refinery/

@@ -1,21 +1,40 @@
-"""Document Intelligence Refinery - Triage Agent and Document Profiling."""
+"""Refinery public API: models, agents (triage + extractor), strategies."""
 
-from refinery.models import DocumentProfile, LanguageInfo
-from refinery.triage.agent import run_triage, save_profile, load_profile, load_profile_from_path
+from refinery.models import (
+    DocumentProfile,
+    LanguageInfo,
+    Bbox,
+    ExtractedDocument,
+    ExtractedPage,
+    ExtractedTable,
+    ExtractedFigure,
+    TextBlock,
+    FontInfo,
+    PageIndex,
+    LDU,
+    ProvenanceChain,
+)
+from refinery.agents.triage import run_triage, save_profile, load_profile, load_profile_from_path
+from refinery.agents.extractor import run_extraction
 from refinery.triage.exceptions import RefineryTriageError
-
-try:
-    from refinery.extraction import run_extraction
-except ImportError:
-    run_extraction = None  # type: ignore[misc, assignment]
 
 __all__ = [
     "DocumentProfile",
     "LanguageInfo",
+    "Bbox",
+    "ExtractedDocument",
+    "ExtractedPage",
+    "ExtractedTable",
+    "ExtractedFigure",
+    "TextBlock",
+    "FontInfo",
+    "PageIndex",
+    "LDU",
+    "ProvenanceChain",
     "run_triage",
     "save_profile",
     "load_profile",
     "load_profile_from_path",
-    "RefineryTriageError",
     "run_extraction",
+    "RefineryTriageError",
 ]

@@ -13,9 +13,10 @@ class FastTextRules(BaseModel):
 
 
 class VisionRules(BaseModel):
+    """Vision model IDs. Use only free/free-tier models (e.g. OpenRouter :free variant)."""
     budget_per_document_usd: float = 1.0
-    model_cheap: str = "google/gemini-2.0-flash-lite-001"
-    model_quality: str = "anthropic/claude-3-5-sonnet"
+    model_cheap: str = "google/gemini-2.0-flash-exp:free"
+    model_quality: str = "google/gemini-2.0-flash-exp:free"
     max_retries: int = 2
 
 

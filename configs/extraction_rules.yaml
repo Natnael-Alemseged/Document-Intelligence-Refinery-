@@ -1,5 +1,6 @@
 # Extraction rules and thresholds for Phase 2 multi-strategy engine.
 # Refer to DOMAIN_NOTES.md for rationale.
+# Vision: use only free/free-tier models (e.g. OpenRouter :free suffix).
 
 fast_text:
   min_chars_per_page: 100   # Below: likely scan or empty page
@@ -11,6 +12,7 @@ confidence_escalation_threshold: 0.5   # Below this: try next strategy (layout -
 
 vision:
   budget_per_document_usd: 1.0
-  model_cheap: "google/gemini-2.0-flash-lite-001"
-  model_quality: "anthropic/claude-3-5-sonnet"
+  # Free-tier only: OpenRouter :free variant (e.g. google/gemini-2.0-flash-exp:free)
+  model_cheap: "google/gemini-2.0-flash-exp:free"
+  model_quality: "google/gemini-2.0-flash-exp:free"
   max_retries: 2

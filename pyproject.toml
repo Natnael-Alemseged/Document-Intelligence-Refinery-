@@ -13,6 +13,7 @@ dependencies = [
     "pdfplumber>=0.10",
     "docling>=2",
     "langdetect>=1.0",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]

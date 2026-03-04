@@ -130,6 +130,8 @@ flowchart LR
 
 The diagram below is the **implemented** pipeline (Phases 1–2): ingest → triage → strategy routing → extraction (A/B/C) → output and audit. Vision uses OpenRouter with fallbacks to Groq, Google Gemini, and SambaNova (model names and budget are in `rubric/extraction_rules.yaml`).
 
+**Complete system view (rubric requirement):** The second diagram includes the **RAG stages** (Semantic Chunking, PageIndex Builder, Query Interface) planned for Phase 3+. These are not yet implemented but are part of the full system architecture.
+
 ```mermaid
 flowchart TB
   subgraph Stage1 [Stage 1: Ingest]
@@ -191,6 +193,25 @@ flowchart TB
   S5Doc --> S5Persist
 ```
 
+**Full pipeline including RAG (Phase 3+ planned):** The following diagram shows the complete system view with post-extraction RAG stages. Stages 6–8 are planned for later phases.
+
+```mermaid
+flowchart TB
+  subgraph Implemented [Phases 1-2: Implemented]
+    S1[Stage 1: Ingest]
+    S2[Stage 2: Triage]
+    S3[Stage 3: Strategy Routing]
+    S4[Stage 4: Extraction A/B/C]
+    S5[Stage 5: Output and Audit]
+  end
+  subgraph RAG [Phase 3+ Planned]
+    S6[Stage 6: Semantic Chunking]
+    S7[Stage 7: PageIndex Builder]
+    S8[Stage 8: Query Interface]
+  end
+  S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8
+```
+
 **Stage summary**
 
 | Stage | Description |
@@ -200,6 +221,9 @@ flowchart TB
 | **3. Strategy routing** | Load rules; apply decision tree (handwriting → vision; needs_vision → vision; needs_layout or layout flags → layout; else fast text); run chosen extractor; if confidence &lt; threshold, escalate B→C or A→B→C. |
 | **4. Extraction** | Run one or more of FastText (pdfplumber), Layout (Docling), Vision (OpenRouter with fallbacks: Groq, Google Gemini, SambaNova). |
 | **5. Output & audit** | Build ExtractedDocument; append to `extraction_ledger.jsonl`; optionally save to `.refinery/extractions/{doc_id}.json`. |
+| **6. Semantic Chunking (planned)** | Chunk extracted text/structure into semantically coherent units for retrieval. |
+| **7. PageIndex Builder (planned)** | Build index (e.g. vector or hybrid) over chunks with page/document provenance. |
+| **8. Query Interface (planned)** | RAG query endpoint over the index for question-answering and retrieval. |
 
 **Router escalation logic (excerpt):** Handwriting or `needs_vision_model` → Vision only. Else if `needs_layout_model` or layout in multi/table/figure/mixed → try Layout; if confidence &lt; 0.5, try Vision. Else try Fast Text; if confidence &lt; 0.5, try Layout; if still &lt; 0.5, try Vision. See `src/refinery/agents/extractor.py`.
 

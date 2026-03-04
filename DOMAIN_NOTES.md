@@ -49,6 +49,8 @@ When document-level confidence (minimum over pages) is below `confidence_escalat
 
 - Used for scanned images, when A/B confidence is below threshold, or when `likely_handwritten` is in the triage notes.  
 - **Budget**: `vision.budget_per_document_usd` caps spend per document; when the next page would exceed the cap, we stop and return the document with `status="truncated_budget"`.
+- **Free-tier only**: Default vision models use OpenRouter’s **free** variant (e.g. `google/gemini-2.0-flash-exp:free`). Set `OPENROUTER_API_KEY` or `OPENROUTER_KEY` in `.env`. Use only `:free` (or other free-tier) model IDs in `configs/extraction_rules.yaml` to avoid paid usage.
+- **Provider fallback**: If the primary provider fails (e.g. rate limit or error), the vision extractor tries in order: **OpenRouter** → **Groq** (`GROQ_API_KEY`) → **Google Gemini** (`GOOGLE_API_KEY` or `GEMINI_API_KEY`) → **SambaNova** (`SAMBANOVA_KEY`). At least one of these keys must be set.
 
 ## Audit
 

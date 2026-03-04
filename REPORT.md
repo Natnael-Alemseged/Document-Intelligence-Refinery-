@@ -257,15 +257,45 @@ flowchart TB
 
 ### 3.4 Non-monetary cost (latency)
 
-- **Strategy A:** Seconds per document (CPU-bound, page count linear).
-- **Strategy B:** Tens of seconds to about one minute per document (Docling; depends on page count and table/figure density).
-- **Strategy C:** Minutes per document (page-bound; one API call per page, plus retries/fallbacks).
+- **Strategy A:** Seconds per document (CPU-bound, page count linear). **Time per page:** ~0.1–0.5 s/page (typical 20–50 page doc in 5–25 s).
+- **Strategy B:** Tens of seconds to about one minute per document (Docling; depends on page count and table/figure density). **Time per page:** ~2–6 s/page (e.g. 30-page doc in ~1–3 min).
+- **Strategy C:** Minutes per document (page-bound; one API call per page, plus retries/fallbacks). **Time per page:** ~5–15 s/page (network + model; e.g. 20 pages in ~2–5 min).
 
-### 3.5 Example: 50-doc corpus
+### 3.5 Cost derivation (math)
+
+This section documents the numerical assumptions behind the **$1.00 budget cap** and per-strategy cost/time estimates.
+
+**Tokens per page (Strategy C — Vision):**
+
+- **Input:** One page image at 150 DPI (PyMuPDF) is typically represented as ~1,500–2,500 tokens (vision tokenizer–dependent). System + user prompt adds ~200–400 tokens. **Total input per page:** ~1,700–2,900 tokens (we use **~2,200** for midpoint estimates).
+- **Output:** Structured JSON (text blocks, tables, figures) per page: ~500–2,000 tokens depending on density. **Assumption:** **~1,000** output tokens per page (midpoint).
+
+**Model prices used:**
+
+- Fallback pricing in code (when provider does not return usage): **input $0.0001 per 1K tokens**, **output $0.0003 per 1K tokens** (`src/refinery/strategies/vision_openrouter.py`: `DEFAULT_INPUT_USD_PER_1K`, `DEFAULT_OUTPUT_USD_PER_1K`). OpenRouter and provider docs (2025) for paid vision models often quote ~\$0.01–0.05 per 1K input and ~\$0.02–0.10 per 1K output for VLMs; free-tier models (e.g. `google/gemini-2.0-flash-exp:free`) are **$0** within rate limits.
+- **Per-page cost (paid, using code defaults):** (2.2 × 0.0001) + (1.0 × 0.0003) = **~\$0.00052** per page (lower bound). Using typical vendor pricing ~\$0.02–0.05 per page gives a more realistic range.
+
+**$1.00 cap derivation:**
+
+- **Cap:** `vision.budget_per_document_usd` = **$1.0** (set in `rubric/extraction_rules.yaml`).
+- **Max pages at cap (paid):** If cost per page ≈ \$0.025 (midpoint of \$0.01–0.05), then **$1.00 ÷ \$0.025 ≈ 40 pages** maximum before stopping. If cost per page ≈ \$0.05, **$1.00 ÷ \$0.05 = 20 pages**. The implementation stops when `spent_usd >= budget_usd` or when adding the next page would exceed the cap (using a conservative \$0.05 margin), and sets `status="truncated_budget"`.
+- **Free tier:** Cost per page = **$0** within provider limits; cap does not truncate by cost but may still apply to rate limits.
+
+**Time per page (numerical summary):**
+
+| Strategy | Time per page (estimate) | Notes |
+|----------|---------------------------|--------|
+| **A — Fast Text** | ~0.1–0.5 s | CPU-only; pdfplumber per-page extract. |
+| **B — Layout** | ~2–6 s | Docling layout + table detection; varies with table/figure density. |
+| **C — Vision** | ~5–15 s | One API call per page; network + model latency; retries add variance. |
+
+These figures are from typical runs and code structure; actual values depend on hardware, network, and document complexity.
+
+### 3.6 Example: 50-doc corpus
 
 If ~90% of docs use A or B and ~10% use Vision (5 docs): **total cost ≈ $0** with free-tier Vision; with paid Vision at cap $1/doc for those 5, **total ≤ $5**. Typical total runtime: dominated by Vision docs if present.
 
-### 3.6 Summary Table
+### 3.7 Summary Table
 
 | Strategy | Typical cost/doc | Cap / notes |
 |----------|------------------|-------------|

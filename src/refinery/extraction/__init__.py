@@ -1,6 +1,6 @@
-"""Multi-strategy extraction: FastText, Layout (Docling), Vision (OpenRouter)."""
+"""Backward compatibility: re-export from refinery.models and refinery.strategies / refinery.agents."""
 
-from refinery.extraction.schema import (
+from refinery.models import (
     Bbox,
     ExtractedDocument,
     ExtractedPage,
@@ -9,11 +9,11 @@ from refinery.extraction.schema import (
     TextBlock,
     FontInfo,
 )
-from refinery.extraction.base import Extractor, load_extraction_rules
-from refinery.extraction.fast_text import FastTextExtractor
-from refinery.extraction.layout_docling import LayoutExtractor, DoclingDocumentAdapter
-from refinery.extraction.vision_openrouter import VisionExtractor
-from refinery.extraction.router import run_extraction
+from refinery.strategies.base import Extractor, load_extraction_rules
+from refinery.strategies.fast_text import FastTextExtractor
+from refinery.strategies.layout_docling import LayoutExtractor, DoclingDocumentAdapter
+from refinery.strategies.vision_openrouter import VisionExtractor
+from refinery.agents.extractor import run_extraction
 
 __all__ = [
     "Bbox",

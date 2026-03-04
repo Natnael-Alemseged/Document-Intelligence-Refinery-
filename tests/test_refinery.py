@@ -94,3 +94,33 @@ def test_document_profile_classification_notes():
     assert p.classification_notes == ["empty_page", "likely_handwritten"]
     d = p.model_dump()
     assert "classification_notes" in d
+
+
+def test_load_profile_requires_doc_id():
+    """load_profile raises if profile file not found."""
+    from refinery.triage.agent import load_profile
+
+    with pytest.raises(FileNotFoundError):
+        load_profile("nonexistent_doc_id_12345")
+
+
+def test_extraction_rules_load():
+    """Extraction rules load from configs/extraction_rules.yaml when present."""
+    from refinery.extraction.base import load_extraction_rules
+
+    rules = load_extraction_rules()
+    assert rules.fast_text.min_chars_per_page >= 0
+    assert 0 <= rules.confidence_escalation_threshold <= 1
+    assert rules.vision.budget_per_document_usd > 0
+
+
+def test_extraction_schema_content_hash():
+    """TextBlock and ExtractedTable get content_hash from from_* factory."""
+    from refinery.extraction.schema import Bbox, TextBlock, ExtractedTable
+
+    tb = TextBlock.from_text_bbox("hello", Bbox(x0=0, top=0, x1=10, bottom=10), page_index=0)
+    assert tb.content_hash
+    assert len(tb.content_hash) == 32
+    et = ExtractedTable.from_data_bbox([["a", "b"]], Bbox(x0=0, top=0, x1=10, bottom=10), page_index=0)
+    assert et.content_hash
+    assert len(et.content_hash) == 32

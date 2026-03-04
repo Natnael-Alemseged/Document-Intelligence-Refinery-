@@ -1,8 +1,9 @@
 """Triage agent orchestration. Uses config, origin and layout heuristics, sampling."""
 
 import hashlib
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 from refinery.models import DocumentProfile, LanguageInfo
 from refinery.triage.config import load_triage_rules
@@ -41,21 +42,50 @@ def _detect_language(text: str) -> LanguageInfo:
     except Exception:
         return LanguageInfo(code="unknown", confidence=0.0)
 
-
 def _detect_domain(text: str, domain_strategy: Optional[object]) -> str:
     """Use provided strategy or default keyword classifier."""
     if domain_strategy is not None and hasattr(domain_strategy, "classify"):
         return domain_strategy.classify(text or "")
-    # Default: simple keyword check
-    text_lower = (text or "").lower()
-    if any(w in text_lower for w in ("balance", "revenue", "invoice", "amount")):
-        return "financial"
-    if any(w in text_lower for w in ("whereas", "hereby", "agreement", "party")):
-        return "legal"
-    if any(w in text_lower for w in ("api", "implementation", "config")):
-        return "technical"
-    if any(w in text_lower for w in ("patient", "diagnosis", "treatment")):
-        return "medical"
+    
+    # Default: robust keyword scoring with thresholds
+    if not text or len(text) < 100:  # Ignore very short or empty text
+        return "general"
+    
+    # Normalize text: lowercase, remove punctuation for better matching
+    text_norm = re.sub(r'[^\w\s]', '', text.lower())  # Remove punctuation
+    
+    # Domain-specific keyword lists (expanded for robustness, focused on corpus like financial reports)
+    domains: Dict[str, list[str]] = {
+        "financial": [
+            "balance", "revenue", "invoice", "amount", "payment", "transaction", "bank", "capital", 
+            "asset", "financial", "atm", "pos", "p2p", "interoperable", "qr", "wallet", "billion", 
+            "birr", "fiscal", "report", "annual", "board", "shareholders", "profit", "expense", 
+            "income", "settlement", "clearing", "scheme", "dispute", "card", "pin", "personalization"
+        ],
+        "legal": [
+            "whereas", "hereby", "agreement", "party", "contract", "clause", "regulation", "law", 
+            "court", "dispute", "liability", "terms", "conditions", "warranty", "indemnity"
+        ],
+        "technical": [
+            "api", "implementation", "config", "code", "system", "platform", "integration", 
+            "development", "testing", "project", "iso", "instant", "real-time", "gateway", "recon"
+        ],
+        "medical": [
+            "patient", "diagnosis", "treatment", "health", "disease", "symptom", "medicine", 
+            "hospital", "doctor", "therapy", "surgery"
+        ]
+    }
+    
+    # Score each domain by counting unique keyword matches (avoids overcounting repeats)
+    scores: Dict[str, int] = {}
+    for domain, keywords in domains.items():
+        matches = sum(1 for kw in set(keywords) if kw in text_norm)  # Unique keywords
+        scores[domain] = matches
+    
+    # Pick the domain with the highest score if above threshold (e.g., at least 3 matches)
+    max_domain = max(scores, key=scores.get)
+    if scores[max_domain] >= 3:
+        return max_domain
     return "general"
 
 

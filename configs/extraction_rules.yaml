@@ -1,0 +1,16 @@
+# Extraction rules and thresholds for Phase 2 multi-strategy engine.
+# Refer to DOMAIN_NOTES.md for rationale.
+
+fast_text:
+  min_chars_per_page: 100   # Below: likely scan or empty page
+  max_image_ratio: 0.50     # Above: image-dominated page, escalate
+  min_char_density: 0.02    # Character area / page area; below = sparse
+  min_confidence: 0.5       # Per-document minimum to accept fast_text result
+
+confidence_escalation_threshold: 0.5   # Below this: try next strategy (layout -> vision)
+
+vision:
+  budget_per_document_usd: 1.0
+  model_cheap: "google/gemini-2.0-flash-lite-001"
+  model_quality: "anthropic/claude-3-5-sonnet"
+  max_retries: 2

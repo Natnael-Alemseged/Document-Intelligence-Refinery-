@@ -112,6 +112,8 @@ def test_extraction_rules_load():
     assert rules.fast_text.min_chars_per_page >= 0
     assert 0 <= rules.confidence_escalation_threshold <= 1
     assert rules.vision.budget_per_document_usd > 0
+    assert rules.chunking.max_tokens_per_chunk > 0
+    assert rules.pageindex.max_input_tokens > 0
 
 
 def test_extraction_schema_content_hash():

@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class PageIndex(BaseModel):
@@ -26,11 +26,19 @@ class LDU(BaseModel):
     kind: LDUKind = "text"
     content: Any = None  # text str, or table data, or figure ref
     page_index: Optional[PageIndex] = None
+    page_refs: List[int] = Field(default_factory=list)  # page indices the chunk spans (for multi-page chunks)
+    token_count: int = 0
     bbox: Optional[Dict[str, float]] = None  # x0, top, x1, bottom
     content_hash: Optional[str] = None
     parent_section: Optional[str] = None  # e.g. "Chapter 3", "Appendix A"
     chunk_id: str = ""  # stable id for dedup, retrieval, referencing
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @computed_field
+    @property
+    def chunk_type(self) -> LDUKind:
+        """Spec-compliant alias for kind (chunk_type in API)."""
+        return self.kind
 
 
 class ProvenanceChain(BaseModel):

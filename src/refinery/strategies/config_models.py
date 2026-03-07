@@ -33,10 +33,14 @@ class ChunkingRules(BaseModel):
 
 
 class PageIndexConfig(BaseModel):
-    """PageIndex tree builder: section summaries via cheap LLM."""
+    """PageIndex tree builder: section summaries via cheap LLM; optional key_entities, data_types."""
+
     summary_model_id: Optional[str] = None  # None = use vision.model_cheap
     max_input_tokens: int = 1024
     batch_size: int = 5
+    key_entities_enabled: bool = False  # extract named entities per section (LLM/regex)
+    data_types_from_ldu: bool = True  # derive data_types_present from LDU kinds in section
+    output_dir: Optional[str] = None  # default .refinery/pageindex
 
 
 class ExtractionRules(BaseModel):

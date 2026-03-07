@@ -36,3 +36,6 @@ pageindex:
   summary_model_id: null
   max_input_tokens: 1024
   batch_size: 5
+  key_entities_enabled: false
+  data_types_from_ldu: true
+  output_dir: null

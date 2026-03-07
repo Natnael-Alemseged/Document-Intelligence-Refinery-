@@ -37,3 +37,6 @@ pageindex:
   summary_model_id: null       # null = use vision.model_cheap
   max_input_tokens: 1024
   batch_size: 5                # Sections per batch for LLM calls
+  key_entities_enabled: false  # extract named entities per section (regex/LLM)
+  data_types_from_ldu: true    # derive data_types_present from LDU kinds
+  output_dir: null             # null = .refinery/pageindex

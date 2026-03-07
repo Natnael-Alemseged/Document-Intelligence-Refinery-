@@ -16,6 +16,9 @@ dependencies = [
     "pyyaml>=6",
     "httpx>=0.24",
     "pymupdf>=1.23",
+    "tiktoken>=0.5",
+    "chromadb>=0.4",
+    "sentence-transformers>=2.2",
 ]
 
 [project.optional-dependencies]

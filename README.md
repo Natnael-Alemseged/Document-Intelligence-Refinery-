@@ -22,12 +22,19 @@ Unit tests cover Triage Agent classification (origin, layout, domain) and extrac
 
 ## Project layout
 
-- **`src/refinery/models/`** — Pydantic schemas: `DocumentProfile`, `ExtractedDocument`, `LDU`, `PageIndex`, `ProvenanceChain`, extraction schema (Bbox, TextBlock, ExtractedTable, etc.).
-- **`src/refinery/agents/`** — **Triage Agent** (`triage.py`): origin_type, layout_complexity, domain_hint. **Extractor** (`extractor.py`): ExtractionRouter with confidence-gated escalation.
-- **`src/refinery/strategies/`** — Extraction strategies with shared interface: `FastTextExtractor`, `LayoutExtractor`, `VisionExtractor`.
-- **`rubric/extraction_rules.yaml`** — Chunking constitution and extraction thresholds (fallback: `configs/extraction_rules.yaml`).
-- **`.refinery/profiles/`** — DocumentProfile JSON outputs (at least 12 corpus documents recommended; minimum 3 per class).
-- **`.refinery/extraction_ledger.jsonl`** — Ledger entries with strategy selection, confidence scores, and cost estimates.
+- **`src/refinery/models/`** — Pydantic schemas: `DocumentProfile`, `ExtractedDocument`, `LDU`, `PageIndex`, `ProvenanceChain`, `SourceCitation`, extraction schema (Bbox, TextBlock, ExtractedTable, etc.).
+- **`src/refinery/agents/`** — **Triage** (`triage.py`), **Extractor** (`extractor.py`), **Chunker** (`chunker.py`: ChunkingEngine + ChunkValidator), **Indexer** (`indexer.py`: PageIndex builder), **Query Agent** (`query_agent.py`: LangGraph with pageindex_navigate, semantic_search, structured_query), **Audit** (`audit.py`: verify_claim).
+- **`src/refinery/strategies/`** — Extraction strategies: FastText, Layout (Docling), Vision (OpenRouter).
+- **`src/refinery/pageindex/`** — PageIndex tree (hierarchical sections, key_entities, data_types_present), builder, retrieval with/without PageIndex.
+- **`src/refinery/vector_store/`** — ChromaDB + sentence-transformers (default `all-MiniLM-L6-v2`).
+- **`src/refinery/facts/`** — FactTable extractor and SQLite store for financial/legal key-value facts.
+- **`rubric/extraction_rules.yaml`** — Extraction thresholds, chunking, pageindex (key_entities_enabled, data_types_from_ldu).
+- **`.refinery/profiles/`** — DocumentProfile JSON.
+- **`.refinery/extractions/`** — ExtractedDocument JSON.
+- **`.refinery/pageindex/`** — PageIndex trees (JSON) per doc_id.
+- **`.refinery/vector_store/`** — ChromaDB persistence.
+- **`.refinery/fact_store.db`** — SQLite fact table (when fact extraction is used).
+- **`.refinery/example_qa/`** — Example Q&A with full ProvenanceChain (from `scripts/build_artifacts.py --example-qa-out`).
 
 ## Triage a PDF (CLI)
 
@@ -93,3 +100,43 @@ Set at least one in `.env` (or environment) for VisionExtractor and fallbacks:
 - `SAMBANOVA_KEY`
 
 Default vision model is free-tier (`google/gemini-2.0-flash-exp:free`). Provider fallback order: OpenRouter → Groq → Google → SambaNova.
+
+## Query agent and provenance
+
+After extraction, chunking, and PageIndex build, run the **query agent** (LangGraph with pageindex_navigate, semantic_search, structured_query). Every answer includes a **ProvenanceChain** (SourceCitation: document_name, page_number, bbox, content_hash).
+
+```python
+from refinery.agents.query_agent import run_query, invoke_query_agent
+result = run_query("What are the revenue figures?", doc_id="my_doc_id")
+print(result["answer"], result["provenance_chain"].citations)
+state = invoke_query_agent("What are the revenue figures?", doc_id="my_doc_id")
+```
+
+Pipeline: extraction → chunking → build PageIndex (`refinery.agents.indexer.build_page_index`) → run query.
+
+## Audit Mode
+
+```python
+from refinery.agents import verify_claim
+out = verify_claim("The report states revenue was $4.2B in Q3", doc_id="report_2024")
+# out["status"] in ("verified", "not_found", "unverifiable"); out["citation"] when verified
+```
+
+## Example Q&A and artifacts
+
+- Build PageIndex trees: `uv run python scripts/build_artifacts.py --extractions-dir .refinery/extractions --output-dir .refinery/pageindex`
+- Example Q&A with ProvenanceChain: `uv run python scripts/build_artifacts.py --example-qa-out .refinery/example_qa/example_qa.json`
+- Precision (PageIndex vs vector): `uv run python scripts/measure_retrieval_precision.py --extraction .refinery/extractions/DOC_ID.json --labeled scripts/labeled_queries.json`
+
+## Environment variables
+
+- `OPENROUTER_API_KEY` or `OPENROUTER_KEY` — Vision and PageIndex summaries
+- `REFINERY_CHROMA_DIR` — ChromaDB path (default `.refinery/vector_store`)
+- `REFINERY_FACT_DB` — Fact store path (default `.refinery/fact_store.db`)
+
+## Deploy in under 10 minutes
+
+1. `uv sync`
+2. Set `OPENROUTER_API_KEY` if using Vision/PageIndex summaries
+3. Triage: `uv run python -m refinery path/to/document.pdf`; then run extraction and build PageIndex
+4. Docker: `docker build -t refinery .` then `docker run --rm -v $(pwd)/.refinery:/app/.refinery -e OPENROUTER_API_KEY=xxx refinery path/to/doc.pdf`

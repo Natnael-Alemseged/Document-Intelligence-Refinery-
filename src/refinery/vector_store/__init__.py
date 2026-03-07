@@ -98,6 +98,10 @@ class VectorStore:
             }
             if ldu.page_refs:
                 meta["page_refs"] = json.dumps(ldu.page_refs)
+            if ldu.bbox is not None:
+                meta["bbox"] = json.dumps(ldu.bbox)
+            if ldu.content_hash:
+                meta["content_hash"] = ldu.content_hash
             metadatas.append(meta)
         for start in range(0, len(ids), batch_size):
             end = start + batch_size
@@ -133,7 +137,22 @@ class VectorStore:
         for i, id_ in enumerate(ids):
             meta = metadatas[i] if i < len(metadatas) else {}
             doc = documents[i] if i < len(documents) else ""
-            out.append({"id": id_, "metadata": meta, "document": doc})
+            # Parse bbox from JSON if present (ChromaDB metadata is string)
+            bbox = None
+            if meta.get("bbox"):
+                try:
+                    bbox = json.loads(meta["bbox"]) if isinstance(meta["bbox"], str) else meta["bbox"]
+                except (TypeError, ValueError):
+                    pass
+            out.append({
+                "id": id_,
+                "metadata": meta,
+                "document": doc,
+                "bbox": bbox,
+                "content_hash": meta.get("content_hash"),
+                "doc_id": meta.get("doc_id"),
+                "page_refs": json.loads(meta["page_refs"]) if meta.get("page_refs") else [],
+            })
         return out
 
     def get_embed_fn(self):

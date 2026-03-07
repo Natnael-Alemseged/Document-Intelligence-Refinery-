@@ -13,6 +13,7 @@ from refinery.models import (
     PageIndex,
     LDU,
     ProvenanceChain,
+    SourceCitation,
 )
 from refinery.agents.triage import run_triage, save_profile, load_profile, load_profile_from_path
 from refinery.agents.extractor import run_extraction
@@ -42,6 +43,7 @@ __all__ = [
     "PageIndex",
     "LDU",
     "ProvenanceChain",
+    "SourceCitation",
     "run_triage",
     "save_profile",
     "load_profile",

@@ -42,7 +42,7 @@ When document-level confidence (minimum over pages) is below `confidence_escalat
 
 ## Layout strategy (Strategy B)
 
-- Used for multi-column, table-heavy, figure-heavy, or mixed layout/origin.  
+- Used for multi-column, table-heavy, figure-heavy, or mixed layout/origin. **Tool choice:** Docling was chosen for layout extraction for table fidelity, reading-order reconstruction, and Mac-friendly local runs without requiring GPU (unlike some MinerU setups).
 - **Table-heavy sanity check**: If the profile is `table_heavy` but Docling detects zero tables, we return low confidence so the router escalates to Vision.
 
 ## Vision strategy (Strategy C)

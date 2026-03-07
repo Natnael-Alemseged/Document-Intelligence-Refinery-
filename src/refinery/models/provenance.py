@@ -1,4 +1,4 @@
-"""Provenance and logical document units: PageIndex, LDU, ProvenanceChain."""
+"""Provenance and logical document units: PageIndex, LDU, ProvenanceChain, Citation."""
 
 from typing import Any, Dict, List, Literal, Optional
 
@@ -15,6 +15,30 @@ class PageIndex(BaseModel):
 
 # Allow recursive PageIndex
 PageIndex.model_rebuild()
+
+
+class SourceCitation(BaseModel):
+    """Single source citation: document_name, page_number(s), bbox, content_hash for audit."""
+
+    document_name: str = ""
+    page_number: Optional[int] = None  # primary page (1-based for display)
+    page_numbers: List[int] = Field(default_factory=list)  # all pages when chunk spans multiple
+    bbox: Optional[Dict[str, float]] = None  # x0, top, x1, bottom
+    content_hash: Optional[str] = None
+
+
+class ProvenanceChain(BaseModel):
+    """Chain of content hashes for audit and deduplication, with source and span metadata.
+    Every answer must include a list of citations (document_name, page_number, bbox, content_hash)."""
+
+    hashes: List[str] = Field(default_factory=list)
+    source_strategy: Optional[str] = None
+    source_document: Optional[str] = None  # doc_id or path for traceability
+    document_name: Optional[str] = None  # primary display name (alias from source_document)
+    page_number: Optional[int] = None  # primary page for citation (1-based)
+    page_numbers: List[int] = Field(default_factory=list)  # all pages when chain spans multiple
+    bbox: Optional[Dict[str, float]] = None  # overall span (x0, top, x1, bottom) for the chain
+    citations: List[SourceCitation] = Field(default_factory=list)  # list of source citations per answer
 
 
 LDUKind = Literal["text", "table", "figure", "heading", "list", "other"]
@@ -39,12 +63,3 @@ class LDU(BaseModel):
     def chunk_type(self) -> LDUKind:
         """Spec-compliant alias for kind (chunk_type in API)."""
         return self.kind
-
-
-class ProvenanceChain(BaseModel):
-    """Chain of content hashes for audit and deduplication, with source and span metadata."""
-
-    hashes: List[str] = Field(default_factory=list)
-    source_strategy: Optional[str] = None
-    source_document: Optional[str] = None  # doc_id or path for traceability
-    bbox: Optional[Dict[str, float]] = None  # overall span (x0, top, x1, bottom) for the chain

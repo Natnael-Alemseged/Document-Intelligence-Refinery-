@@ -11,7 +11,7 @@ from refinery.models.extraction_schema import (
     FontInfo,
     ExtractionStatus,
 )
-from refinery.models.provenance import PageIndex, LDU, ProvenanceChain, LDUKind
+from refinery.models.provenance import PageIndex, LDU, ProvenanceChain, LDUKind, SourceCitation
 
 __all__ = [
     "DocumentProfile",
@@ -28,4 +28,5 @@ __all__ = [
     "LDU",
     "ProvenanceChain",
     "LDUKind",
+    "SourceCitation",
 ]

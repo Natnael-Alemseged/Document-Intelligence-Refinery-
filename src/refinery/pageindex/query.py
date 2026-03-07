@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Optional
 
 from refinery.models import LDU
 
-from refinery.pageindex.models import SectionNode
+from refinery.pageindex.models import SectionNode, flatten_section_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -20,18 +20,19 @@ def pageindex_query(
 ) -> List[Any]:
     """
     Given a topic, embed it and section summaries, pick top-k sections, then run vector search
-    restricted to LDUs in those sections. Returns list of chunks (e.g. LDU or doc).
+    restricted to LDUs in those sections. section_nodes can be flat list or tree (roots); flattened internally.
     """
-    if not section_nodes:
+    flat = flatten_section_nodes(section_nodes) if section_nodes else []
+    if not flat:
         return vector_store_query_fn(embed_fn(topic), None, top_k_chunks)
     topic_embed = embed_fn(topic)
     section_embeds = []
-    for node in section_nodes:
-        text = (node.summary or "") + " " + (node.section_label or "")
+    for node in flat:
+        text = (node.summary or "") + " " + (node.section_label or "") + " " + (node.title or "")
         if text.strip():
             section_embeds.append((node, embed_fn(text.strip())))
         else:
-            section_embeds.append((node, embed_fn(node.section_label or "")))
+            section_embeds.append((node, embed_fn(node.section_label or node.title or "")))
     # Cosine similarity (simplified: dot product if normalized)
     def _sim(a: List[float], b: List[float]) -> float:
         n = len(a)
@@ -61,8 +62,9 @@ def retrieval_with_pageindex(
     """
     if not section_nodes or not ldus:
         return _retrieval_flat(topic, ldus, embed_fn, top_k)
+    flat = flatten_section_nodes(section_nodes)
     topic_embed = embed_fn(topic)
-    section_texts = [(n, (n.summary or "") + " " + (n.section_label or "")) for n in section_nodes]
+    section_texts = [(n, (n.summary or "") + " " + (n.section_label or "") + " " + (n.title or "")) for n in flat]
     section_embeds = [(n, embed_fn(t.strip() or n.section_label or "")) for n, t in section_texts]
 
     def _sim(a: List[float], b: List[float]) -> float:

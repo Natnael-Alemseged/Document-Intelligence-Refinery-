@@ -4,7 +4,7 @@ Measure retrieval precision with vs without PageIndex.
 
 Usage:
   uv run python scripts/measure_retrieval_precision.py --extraction .refinery/extractions/DOC_ID.json --labeled scripts/labeled_queries.json
-  uv run python scripts/measure_retrieval_precision.py --ldus .refinery/ldus/DOC_ID.json --pageindex .refinery/page_index/DOC_ID.json --labeled scripts/labeled_queries.json
+  uv run python scripts/measure_retrieval_precision.py --ldus .refinery/ldus/DOC_ID.json --pageindex .refinery/pageindex/DOC_ID.json --labeled scripts/labeled_queries.json
 
 Labeled queries JSON format:
   [
@@ -50,9 +50,11 @@ def load_ldus_from_json(ldus_path: Path) -> list[LDU]:
 
 
 def load_pageindex_from_json(path: Path) -> list[SectionNode]:
-    """Load section nodes from .refinery/page_index/{doc_id}.json."""
+    """Load section nodes from .refinery/pageindex/{doc_id}.json or .refinery/page_index/{doc_id}.json."""
     data = json.loads(path.read_text(encoding="utf-8"))
-    return [SectionNode.model_validate(n) for n in data]
+    # May be list of roots (tree) or flat list
+    nodes = [SectionNode.model_validate(n) for n in data]
+    return nodes
 
 
 def load_labeled_queries(path: Path) -> list[dict]:

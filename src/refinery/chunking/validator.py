@@ -1,7 +1,7 @@
 """ChunkValidator: verifies the five chunking rules before emitting LDUs."""
 
 import re
-from typing import Any, List
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,8 +45,9 @@ class ChunkValidator:
         re.compile(r"see\s+Figure\s+\d+", re.IGNORECASE),
     ]
 
-    def validate(self, ldus: List[LDU]) -> ValidationResult:
+    def validate(self, ldus: List[LDU], max_tokens_for_list: Optional[int] = None) -> ValidationResult:
         violations: List[RuleViolation] = []
+        seen_non_root_section = False
 
         for ldu in ldus:
             # Rule 1: Table/header - table LDU must have content (full table)
@@ -73,10 +74,28 @@ class ChunkValidator:
                         )
                     )
 
-            # Rule 3: Numbered list - heuristic: list LDU should not end mid-list (optional)
-            # Skip deep check for Phase 3.
+            # Rule 3: Numbered list - list LDU must not exceed max_tokens (single LDU unless over limit)
+            if ldu.kind == "list" and max_tokens_for_list is not None:
+                if ldu.token_count > max_tokens_for_list:
+                    violations.append(
+                        RuleViolation(
+                            rule_id="numbered_list",
+                            message=f"List LDU exceeds max_tokens_for_list ({ldu.token_count} > {max_tokens_for_list}); must be split or capped",
+                            chunk_id=ldu.chunk_id or "(no id)",
+                        )
+                    )
 
-            # Rule 4: Section headers - parent_section can be None for doc-level; no violation.
+            # Rule 4: Section headers - chunks after a section must inherit parent_section
+            if ldu.parent_section and (ldu.parent_section or "").strip() and ldu.parent_section != "(root)":
+                seen_non_root_section = True
+            if seen_non_root_section and (ldu.parent_section is None or (ldu.parent_section or "").strip() == ""):
+                violations.append(
+                    RuleViolation(
+                        rule_id="section_header",
+                        message="Chunk must have parent_section after a section heading has been seen",
+                        chunk_id=ldu.chunk_id or "(no id)",
+                    )
+                )
 
             # Rule 5: Cross-refs - if content mentions Table N / Figure N, metadata should have cross_refs or raw
             content = _content_str(ldu)

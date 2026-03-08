@@ -320,7 +320,7 @@ class ChunkingEngine:
                 ldu.metadata = dict(ldu.metadata or {})
                 ldu.metadata["cross_refs"] = cross_refs
 
-        result = self.validator.validate(ldus)
+        result = self.validator.validate(ldus, max_tokens_for_list=getattr(self.rules, "max_tokens_for_list", None))
         if not result.valid:
             for v in result.violations:
                 logger.warning("ChunkValidator: %s - %s (chunk_id=%s)", v.rule_id, v.message, v.chunk_id)

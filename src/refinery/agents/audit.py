@@ -21,7 +21,7 @@ def verify_claim(
     - verified: bool
     - citation: ProvenanceChain or None (when verified)
     - status: "verified" | "not_found" | "unverifiable"
-    - evidence: list of nearest chunks (with bbox, content_hash) for inspection
+    - evidence: list of nearest chunks (with bbox, content_hash, text) for inspection
     """
     result = run_query(claim, doc_id=doc_id)
     citations: list = result.get("citations", [])
@@ -38,6 +38,7 @@ def verify_claim(
                 "page_numbers": getattr(c, "page_numbers", []),
                 "bbox": c.bbox,
                 "content_hash": c.content_hash,
+                "text": getattr(c, "text", None),
             })
         elif isinstance(c, dict):
             evidence.append(c)
@@ -78,17 +79,78 @@ def verify_claim(
     }
 
 
+def _llm_judge_claim(claim: str, evidence_summaries: list[str]) -> tuple[bool, str]:
+    """
+    Call LLM to judge whether the evidence supports the claim or is conflicting.
+    Returns (supported: bool, reason: str). Uses OPENROUTER same as PageIndex summaries.
+    """
+    import os
+    import httpx
+    api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_KEY")
+    if not api_key:
+        return (False, "unverifiable (no API key for judge)")
+    evidence_text = "\n".join(f"- {s[:1200]}" for s in evidence_summaries[:5])
+    prompt = f"""Given this claim and the evidence excerpts below, does the evidence support the claim, or is it conflicting/ambiguous?
+Claim: "{claim}"
+
+Evidence excerpts:
+{evidence_text}
+
+Answer with exactly one line: SUPPORTED or UNVERIFIABLE, then a short reason."""
+    try:
+        with httpx.Client(timeout=25.0) as client:
+            r = client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "google/gemini-2.0-flash-exp:free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 150,
+                },
+            )
+        r.raise_for_status()
+        data = r.json()
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+        supported = "SUPPORTED" in content.upper() and "UNVERIFIABLE" not in content.split()[0].upper()
+        return (supported, content.strip() or "no reason")
+    except Exception as e:
+        logger.warning("LLM judge failed: %s", e)
+        return (False, f"unverifiable (judge error: {e})")
+
+
 def verify_claim_with_judge(
     claim: str,
     doc_id: Optional[str] = None,
 ) -> dict:
     """
-    Same as verify_claim but with optional LLM judge step when evidence is present but
-    conflicting: call LLM to decide if claim is supported or unverifiable.
+    Same as verify_claim but with an LLM judge step when multiple evidence items exist:
+    LLM decides whether evidence supports the claim or is conflicting -> verified vs unverifiable.
     """
     base = verify_claim(claim, doc_id=doc_id)
-    if base["status"] != "verified" or len(base.get("evidence", [])) < 2:
+    evidence = base.get("evidence", [])
+    if base["status"] != "unverifiable" or len(evidence) < 2:
         return base
-    # Optional: call LLM to check if evidence conflicts
-    # For now return as verified; can add OPENROUTER call to judge "do these sources support the claim?"
-    return base
+    # Multiple citations: use LLM judge to decide support vs conflicting
+    evidence_summaries = []
+    for e in evidence:
+        excerpt = (e.get("text") or "").strip()
+        metadata = f'{e.get("document_name", "")} p.{e.get("page_number", "")}'
+        if e.get("content_hash"):
+            metadata += f' {str(e.get("content_hash", ""))[:16]}'
+        evidence_summaries.append(f"{metadata}: {excerpt}" if excerpt else metadata)
+    supported, reason = _llm_judge_claim(claim, evidence_summaries)
+    if supported:
+        return {
+            "verified": True,
+            "citation": base.get("citation"),
+            "status": "verified",
+            "evidence": evidence,
+            "judge_reason": reason,
+        }
+    return {
+        "verified": False,
+        "citation": base.get("citation"),
+        "status": "unverifiable",
+        "evidence": evidence,
+        "judge_reason": reason,
+    }

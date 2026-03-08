@@ -15,10 +15,17 @@ from refinery.models.document_profile import DocumentProfile
 
 
 def test_source_citation_model():
-    c = SourceCitation(document_name="doc.pdf", page_number=1, bbox={"x0": 0, "top": 0, "x1": 100, "bottom": 100}, content_hash="abc")
+    c = SourceCitation(
+        document_name="doc.pdf",
+        page_number=1,
+        bbox={"x0": 0, "top": 0, "x1": 100, "bottom": 100},
+        content_hash="abc",
+        text="Revenue was 42 million USD.",
+    )
     assert c.document_name == "doc.pdf"
     assert c.page_number == 1
     assert c.content_hash == "abc"
+    assert c.text == "Revenue was 42 million USD."
 
 
 def test_provenance_chain_citations():

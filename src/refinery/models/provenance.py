@@ -18,18 +18,19 @@ PageIndex.model_rebuild()
 
 
 class SourceCitation(BaseModel):
-    """Single source citation: document_name, page_number(s), bbox, content_hash for audit."""
+    """Single source citation with the excerpt text needed for audit verification."""
 
     document_name: str = ""
     page_number: Optional[int] = None  # primary page (1-based for display)
     page_numbers: List[int] = Field(default_factory=list)  # all pages when chunk spans multiple
     bbox: Optional[Dict[str, float]] = None  # x0, top, x1, bottom
     content_hash: Optional[str] = None
+    text: Optional[str] = None  # retrieved excerpt or fact summary shown to the audit judge
 
 
 class ProvenanceChain(BaseModel):
     """Chain of content hashes for audit and deduplication, with source and span metadata.
-    Every answer must include a list of citations (document_name, page_number, bbox, content_hash)."""
+    Every answer must include a list of citations (document_name, page_number, bbox, content_hash, text)."""
 
     hashes: List[str] = Field(default_factory=list)
     source_strategy: Optional[str] = None

@@ -1,6 +1,6 @@
 """
 Query interface agent: LangGraph with three tools (pageindex_navigate, semantic_search, structured_query).
-Every answer includes a ProvenanceChain (list of SourceCitation: document_name, page_number, bbox, content_hash).
+Every answer includes a ProvenanceChain (list of SourceCitation: document_name, page_number, bbox, content_hash, text).
 """
 
 import json
@@ -68,7 +68,7 @@ def semantic_search(
     """
     Vector search over LDUs. Returns (hits, citations).
     Each hit has id, document, metadata, bbox, content_hash, doc_id, page_refs.
-    Citations are built for ProvenanceChain.
+    Citations preserve the retrieved text so audit mode can inspect the evidence.
     """
     store = vector_store or VectorStore()
     embed_fn = store.get_embed_fn()
@@ -92,6 +92,7 @@ def semantic_search(
                 page_numbers=[p + 1 for p in page_refs] if page_refs else [],
                 bbox=h.get("bbox"),
                 content_hash=h.get("content_hash"),
+                text=(h.get("document") or "")[:2000] or None,
             )
         )
     return hits, citations
@@ -104,7 +105,7 @@ def structured_query(
     limit: int = 20,
 ) -> tuple[List[FactRow], List[SourceCitation]]:
     """
-    Run read-only SQL or key lookup over fact store. Returns (rows, citations with doc_id, page_ref, bbox, content_hash).
+    Run read-only SQL or key lookup over fact store. Returns (rows, citations with doc_id, page_ref, bbox, content_hash, text).
     """
     s = store or FactStore(get_default_store_path())
     rows = s.query_facts(doc_id=doc_id, limit=limit)
@@ -121,6 +122,7 @@ def structured_query(
             page_numbers=[r.page_ref + 1],
             bbox=r.bbox,
             content_hash=r.content_hash,
+            text=f"{r.key}: {r.value}" + (f" {r.unit}" if r.unit else ""),
         )
         for r in filtered
     ]

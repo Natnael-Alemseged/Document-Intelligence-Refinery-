@@ -127,6 +127,7 @@ def main() -> None:
                                 "page_numbers": getattr(c, "page_numbers", []),
                                 "bbox": c.bbox,
                                 "content_hash": c.content_hash,
+                                "text": getattr(c, "text", None),
                             })
                     example_qa.append({
                         "question": q,

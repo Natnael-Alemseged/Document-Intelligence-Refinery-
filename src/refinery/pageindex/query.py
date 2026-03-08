@@ -10,6 +10,37 @@ from refinery.pageindex.models import SectionNode, flatten_section_nodes
 logger = logging.getLogger(__name__)
 
 
+def traverse_sections(
+    topic: str,
+    section_nodes: List[SectionNode],
+    embed_fn: Callable[[str], List[float]],
+    top_k: int = 5,
+) -> List[SectionNode]:
+    """
+    Traversal method: accept a topic or query string and return the most relevant sections.
+    Uses embedding similarity over section title + summary + key_entities. Returns top-k SectionNodes.
+    """
+    flat = flatten_section_nodes(section_nodes) if section_nodes else []
+    if not flat:
+        return []
+    topic_embed = embed_fn(topic)
+    section_texts = [
+        (n, " ".join(filter(None, [n.title, n.section_label, n.summary] + (n.key_entities or []))))
+        for n in flat
+    ]
+    section_embeds = [(n, embed_fn(t.strip() or n.section_label or "")) for n, t in section_texts]
+
+    def _sim(a: List[float], b: List[float]) -> float:
+        n = len(a)
+        if n != len(b) or n == 0:
+            return 0.0
+        return sum(a[i] * b[i] for i in range(n))
+
+    scored = [(node, _sim(topic_embed, emb)) for node, emb in section_embeds]
+    scored.sort(key=lambda x: -x[1])
+    return [node for node, _ in scored[:top_k]]
+
+
 def pageindex_query(
     topic: str,
     section_nodes: List[SectionNode],

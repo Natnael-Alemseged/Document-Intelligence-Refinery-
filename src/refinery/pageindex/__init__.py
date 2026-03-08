@@ -8,6 +8,7 @@ from refinery.pageindex.query import (
     recall_at_k,
     retrieval_with_pageindex,
     retrieval_without_pageindex,
+    traverse_sections,
 )
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "SectionNode",
     "flatten_section_nodes",
     "pageindex_query",
+    "traverse_sections",
     "retrieval_with_pageindex",
     "retrieval_without_pageindex",
     "precision_at_k",

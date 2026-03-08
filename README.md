@@ -147,9 +147,39 @@ To satisfy the full rubric you need **artifacts** (not just code):
 
 | Requirement | How to satisfy |
 |-------------|----------------|
-| **12-document corpus** (min 3 per class) | Add PDFs across Native Financial, Scanned Financial, Legal/Procurement, Technical/General. Run triage + extraction for each; save to `.refinery/extractions/`. |
+| **12-document corpus** (min 3 per class) | Put PDFs in `data/` (or similar). Run `uv run python scripts/onboard_documents.py data/ --max-docs 12` to triage + extract into `.refinery/profiles/` and `.refinery/extractions/`. |
 | **12 PageIndex trees** | `uv run python scripts/build_artifacts.py --extractions-dir .refinery/extractions --output-dir .refinery/pageindex` (run after you have ≥12 extractions). |
 | **12 example Q&A with ProvenanceChain** | `uv run python scripts/build_artifacts.py --example-qa-out .refinery/example_qa/example_qa.json` (requires vector store populated). |
 | **Precision evidence (PageIndex vs naive)** | Add `relevant_chunk_ids` to `scripts/labeled_queries.json`, run `uv run python scripts/measure_retrieval_precision.py --extraction .refinery/extractions/DOC_ID.json --labeled scripts/labeled_queries.json` and record the delta in REPORT.md. |
 | **Audit LLM judge** | `verify_claim_with_judge()` calls an LLM when multiple evidence items exist to decide supported vs unverifiable. Set `OPENROUTER_API_KEY`. |
 | **Fact extraction depth** | Current implementation uses regex + domain trigger. For richer tables, extend `refinery.facts.extractor` with an optional LLM pass. |
+
+### Verified 3 steps to generate artifacts (Master Thinker)
+
+**Step 1 — Process 12+ documents (triage + extraction)**  
+The CLI (`python -m refinery`) only runs **triage** and does not run extraction. To get JSON into `.refinery/extractions/`, use the batch script (triage + extraction in one go):
+
+```bash
+uv run python scripts/onboard_documents.py data/ --max-docs 12
+```
+
+This writes profiles to `.refinery/profiles/` and extractions to `.refinery/extractions/`. Option `--no-save` runs without writing (dry run).
+
+**Step 2 — Build PageIndex and example Q&A**  
+Build trees and ingest LDUs into the vector store, then generate 12 example Q&A with full ProvenanceChain:
+
+```bash
+uv run python scripts/build_artifacts.py --extractions-dir .refinery/extractions --output-dir .refinery/pageindex --ingest --max-docs 12
+uv run python scripts/build_artifacts.py --example-qa-out .refinery/example_qa/example_qa.json --max-docs 12
+```
+
+Or in one run (build + ingest + example Q&A): add both `--ingest` and `--example-qa-out` to the first command.
+
+**Step 3 — Precision measurement and REPORT.md**  
+Run the precision script using a real extraction file (replace `{DOC_ID}` with the stem of a JSON in `.refinery/extractions/`, e.g. `305dd23363bce7af508e746ed3f83cca8a9c6ea9838cef21baf19934ef924a62`), then record the delta in REPORT.md:
+
+```bash
+uv run python scripts/measure_retrieval_precision.py --extraction .refinery/extractions/{DOC_ID}.json --labeled scripts/labeled_queries.json
+```
+
+A positive delta (e.g. +15.00%) demonstrates that PageIndex traversal improves retrieval over naive vector search.

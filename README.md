@@ -140,3 +140,16 @@ out = verify_claim("The report states revenue was $4.2B in Q3", doc_id="report_2
 2. Set `OPENROUTER_API_KEY` if using Vision/PageIndex summaries
 3. Triage: `uv run python -m refinery path/to/document.pdf`; then run extraction and build PageIndex
 4. Docker: `docker build -t refinery .` then `docker run --rm -v $(pwd)/.refinery:/app/.refinery -e OPENROUTER_API_KEY=xxx refinery path/to/doc.pdf`
+
+## Artifacts & rubric checklist (Master Thinker)
+
+To satisfy the full rubric you need **artifacts** (not just code):
+
+| Requirement | How to satisfy |
+|-------------|----------------|
+| **12-document corpus** (min 3 per class) | Add PDFs across Native Financial, Scanned Financial, Legal/Procurement, Technical/General. Run triage + extraction for each; save to `.refinery/extractions/`. |
+| **12 PageIndex trees** | `uv run python scripts/build_artifacts.py --extractions-dir .refinery/extractions --output-dir .refinery/pageindex` (run after you have ≥12 extractions). |
+| **12 example Q&A with ProvenanceChain** | `uv run python scripts/build_artifacts.py --example-qa-out .refinery/example_qa/example_qa.json` (requires vector store populated). |
+| **Precision evidence (PageIndex vs naive)** | Add `relevant_chunk_ids` to `scripts/labeled_queries.json`, run `uv run python scripts/measure_retrieval_precision.py --extraction .refinery/extractions/DOC_ID.json --labeled scripts/labeled_queries.json` and record the delta in REPORT.md. |
+| **Audit LLM judge** | `verify_claim_with_judge()` calls an LLM when multiple evidence items exist to decide supported vs unverifiable. Set `OPENROUTER_API_KEY`. |
+| **Fact extraction depth** | Current implementation uses regex + domain trigger. For richer tables, extend `refinery.facts.extractor` with an optional LLM pass. |

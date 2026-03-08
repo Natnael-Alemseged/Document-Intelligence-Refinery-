@@ -1,12 +1,14 @@
 """
 Query interface agent: LangGraph with three tools (pageindex_navigate, semantic_search, structured_query).
 Every answer includes a ProvenanceChain (list of SourceCitation: document_name, page_number, bbox, content_hash, text).
+Tool selection: navigational queries -> PageIndex first; numerical/factual -> structured_query first; else all tools.
 """
 
 import json
 import logging
+import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from refinery.models import ProvenanceChain, SourceCitation
 from refinery.pageindex.models import SectionNode, flatten_section_nodes
@@ -17,6 +19,26 @@ from refinery.facts.schema import FactRow
 logger = logging.getLogger(__name__)
 
 PAGEINDEX_DIR = Path(".refinery/pageindex")
+
+# Patterns for query-type routing (Master Thinker: tool selection logic)
+NAVIGATIONAL_PATTERNS = re.compile(
+    r"\b(section|where|which part|chapter|appendix|find the part|locate)\b|\babout\s+(what|which)\b",
+    re.IGNORECASE,
+)
+NUMERICAL_PATTERNS = re.compile(
+    r"\b(revenue|profit|expense|amount|total|value|percent|%|quarter|Q[1-4]|million|billion|\$|USD|figures?|numbers?)\b|\d+\.?\d*\s*%",
+    re.IGNORECASE,
+)
+
+
+def _query_intent(query: str) -> Literal["navigational", "numerical", "general"]:
+    """Classify query for tool selection: navigational -> PageIndex; numerical -> structured_query; else general."""
+    q = (query or "").strip()
+    if NAVIGATIONAL_PATTERNS.search(q):
+        return "navigational"
+    if NUMERICAL_PATTERNS.search(q):
+        return "numerical"
+    return "general"
 
 
 def pageindex_navigate(
@@ -136,32 +158,56 @@ def run_query(
     fact_store: Optional[FactStore] = None,
 ) -> dict:
     """
-    Run the query agent: optionally navigate PageIndex, then semantic_search; optionally structured_query.
+    Run the query agent with tool selection by query type:
+    - navigational: PageIndex first, then semantic search scoped to matched sections.
+    - numerical: structured_query (fact table) first, then semantic search; fact citations prioritized.
+    - general: all three tools (PageIndex -> semantic -> facts), merged.
     Returns dict with answer (synthesized text) and provenance_chain (list of SourceCitation).
     """
+    intent = _query_intent(query)
     all_citations: List[SourceCitation] = []
     sections = pageindex_navigate(query, doc_id=doc_id)
     parent_section = None
     if sections:
         parent_section = sections[0].section_label if sections[0].section_label != "(root)" else None
-    hits, search_citations = semantic_search(
-        query,
-        doc_id=doc_id,
-        parent_section=parent_section,
-        n_results=5,
-        vector_store=vector_store,
-    )
-    all_citations.extend(search_citations)
-    fact_rows, fact_citations = structured_query(query, doc_id=doc_id, store=fact_store, limit=10)
-    all_citations.extend(fact_citations)
-    # Synthesize short answer from top hit and/or facts
+
+    # Tool selection: navigational -> emphasize section-scoped search; numerical -> run facts first
+    if intent == "navigational" and parent_section:
+        # Section-first: semantic search scoped to matched sections
+        hits, search_citations = semantic_search(
+            query, doc_id=doc_id, parent_section=parent_section, n_results=5, vector_store=vector_store
+        )
+        fact_rows, fact_citations = structured_query(query, doc_id=doc_id, store=fact_store, limit=10)
+        all_citations.extend(search_citations)
+        all_citations.extend(fact_citations)
+    elif intent == "numerical":
+        # Numerical/factual: structured_query first, then semantic
+        fact_rows, fact_citations = structured_query(query, doc_id=doc_id, store=fact_store, limit=10)
+        hits, search_citations = semantic_search(
+            query, doc_id=doc_id, parent_section=parent_section, n_results=5, vector_store=vector_store
+        )
+        all_citations.extend(fact_citations)
+        all_citations.extend(search_citations)
+    else:
+        # general: current order (semantic then facts)
+        hits, search_citations = semantic_search(
+            query, doc_id=doc_id, parent_section=parent_section, n_results=5, vector_store=vector_store
+        )
+        fact_rows, fact_citations = structured_query(query, doc_id=doc_id, store=fact_store, limit=10)
+        all_citations.extend(search_citations)
+        all_citations.extend(fact_citations)
+
+    # Synthesize answer: for numerical intent prefer fact rows when present
     answer_parts = []
+    if intent == "numerical" and fact_rows:
+        for r in fact_rows[:5]:
+            answer_parts.append(f"{r.key}: {r.value}" + (f" {r.unit}" if r.unit else ""))
     if hits:
         top = hits[0]
         doc_text = (top.get("document") or "")[:500]
         if doc_text:
             answer_parts.append(doc_text.strip() + ("..." if len(doc_text) >= 500 else ""))
-    if fact_rows:
+    if intent != "numerical" and fact_rows:
         for r in fact_rows[:5]:
             answer_parts.append(f"{r.key}: {r.value}" + (f" {r.unit}" if r.unit else ""))
     answer = "\n".join(answer_parts) if answer_parts else "No matching content found."

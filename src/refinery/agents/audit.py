@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 
 from refinery.models import ProvenanceChain, SourceCitation
 from refinery.agents.query_agent import run_query
+from refinery.env import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +85,8 @@ def _llm_judge_claim(claim: str, evidence_summaries: list[str]) -> tuple[bool, s
     Call LLM to judge whether the evidence supports the claim or is conflicting.
     Returns (supported: bool, reason: str). Uses OPENROUTER same as PageIndex summaries.
     """
-    import os
     import httpx
-    api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_KEY")
+    api_key = get_env_value("OPENROUTER_API_KEY", "OPENROUTER_KEY")
     if not api_key:
         return (False, "unverifiable (no API key for judge)")
     evidence_text = "\n".join(f"- {s[:1200]}" for s in evidence_summaries[:5])

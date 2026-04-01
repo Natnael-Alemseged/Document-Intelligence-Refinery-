@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 from refinery.models import DocumentProfile, Bbox, ExtractedDocument, ExtractedPage, ExtractedTable, ExtractedFigure, TextBlock
 from refinery.strategies.base import load_extraction_rules
 from refinery.strategies.config_models import ExtractionRules
+from refinery.env import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -250,23 +251,19 @@ Use points (72 DPI) for bbox. Return only valid JSON, no markdown."""
 
 
 def _get_openrouter_api_key() -> Optional[str]:
-    import os
-    return os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_KEY")
+    return get_env_value("OPENROUTER_API_KEY", "OPENROUTER_KEY")
 
 
 def _get_groq_api_key() -> Optional[str]:
-    import os
-    return os.environ.get("GROQ_API_KEY")
+    return get_env_value("GROQ_API_KEY")
 
 
 def _get_google_api_key() -> Optional[str]:
-    import os
-    return os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    return get_env_value("GOOGLE_API_KEY", "GEMINI_API_KEY")
 
 
 def _get_sambanova_api_key() -> Optional[str]:
-    import os
-    return os.environ.get("SAMBANOVA_KEY") or os.environ.get("SAMBANOVA_API_KEY")
+    return get_env_value("SAMBANOVA_KEY", "SAMBANOVA_API_KEY")
 
 
 def _vision_request_openrouter(

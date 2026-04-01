@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 from refinery.models import LDU
 from refinery.strategies.base import load_extraction_rules
 from refinery.strategies.config_models import ExtractionRules, PageIndexConfig
+from refinery.env import get_env_value
 
 from refinery.pageindex.models import SectionNode
 
@@ -47,7 +48,7 @@ def _summarize_with_llm(text: str, model_id: str, max_tokens: int) -> Optional[s
     """Call cheap LLM to summarize section text. Returns summary or None on failure."""
     prompt = f"Summarize this section in 2-3 sentences. Section text:\n\n{_truncate_to_tokens(text, max_tokens)}"
     messages = [{"role": "user", "content": prompt}]
-    api_key = __import__("os").environ.get("OPENROUTER_API_KEY") or __import__("os").environ.get("OPENROUTER_KEY")
+    api_key = get_env_value("OPENROUTER_API_KEY", "OPENROUTER_KEY")
     if not api_key:
         logger.warning("No OPENROUTER_API_KEY; skipping LLM summary")
         return None
